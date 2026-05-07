@@ -4,7 +4,35 @@ import random
 import pytmx
 from pytmx.util_pygame import load_pygame
 
+
 pygame.init()
+
+pygame.mixer.init()
+
+# ---------------- SOUND EFFECTS ----------------
+sound_opener = pygame.mixer.Sound('assets/start_sound.wav')
+sound_click = pygame.mixer.Sound('assets/click.wav')   # Play/Main Menu
+sound_quit = pygame.mixer.Sound('assets/quit.wav')     # Quit button
+sound_portal_unlock = pygame.mixer.Sound('assets/portal_unlock.wav')
+sound_game_over = pygame.mixer.Sound('assets/game_over.wav')
+
+sound_opener.play()
+
+sound_click.set_volume(0.7)
+sound_quit.set_volume(0.7)
+sound_portal_unlock.set_volume(0.8)
+sound_game_over.set_volume(0.8)
+
+# ---------------- MUSIC ----------------
+pygame.mixer.music.load("assets/hell_menu.wav")
+pygame.mixer.music.set_volume(0.5)
+pygame.mixer.music.play(-1, 0.0)  # loop forever
+
+playing_game_music = False
+
+
+
+
 screen = pygame.display.set_mode((1280, 720))
 clock = pygame.time.Clock()
 
@@ -29,27 +57,38 @@ def load_level(index):
     for obs in lvl["obstacles"]:
         obstacles.append(pygame.Rect(obs["x"], obs["y"], obs["w"], obs["h"]))
 
-    tmx_path = lvl.get("tmx_file")
-    tmx_data = load_pygame(tmx_path) if tmx_path else None 
-    tmx_path = 'assets/level1.tmx'
+    tmx_path = lvl.get("tmx_file", "assets/level1.tmx")
+    tmx_data = load_pygame(tmx_path)
 
     return world_w, world_h, obstacles, lvl["name"], tmx_data
 
 
 def start_level(index, reset_hp=False):
-    global current_level_index, WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data, scroll_x, scroll_y, player_hp, enemies, enemy_hp, spawned_count, dashing, last_dash
+    global current_level_index, WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data, scroll_x, scroll_y, player_hp, enemies, enemy_hp, spawned_count, dashing, last_dash, kill_count, portal_sound_played, game_over_sound_played
+    
     current_level_index = index
     WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data = load_level(index)
+
     player.topleft = (640, 360)
     scroll_x, scroll_y = 0, 0
+
     dashing = False
     last_dash = 0
+
     if reset_hp:
         player_hp = 100
     enemies.clear()
     enemy_hp.clear()
     spawned_count = 0
-    for _ in range(ENEMIES_PER_LEVEL):
+    kill_count = 0
+
+    portal_sound_played = False
+    global game_over_sound_played
+    game_over_sound_played = False
+
+    enemy_count = get_enemy_count(current_level_index)
+
+    for _ in range(enemy_count):
         spawn_enemy()
 
 WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data = load_level(current_level_index)
@@ -70,7 +109,7 @@ MENU_TEXT = (255, 150, 150)
 MENU_SHADOW = (100, 20, 20)
 EXIT_BUTTON_COLOR = (28, 40, 70)
 EXIT_BUTTON_HOVER = (58, 90, 170)
-EXIT_BUTTON_RECT = pygame.Rect(770, 10, 160, 42)
+EXIT_BUTTON_RECT = pygame.Rect(screen.get_width() - 170, 10, 160, 42)
 EXIT_BUTTON_LABEL = "MAIN MENU"
 
 menu_items = ["Play", "Quit"]
@@ -106,8 +145,21 @@ dash_velocity_y = 0
 enemies = []
 enemy_hp = []
 
-ENEMIES_PER_LEVEL = 15
+BASE_ENEMIES = 15
+def get_enemy_count(level_index):
+    # Level 1 = 15 enemies
+    # Level 2 = 20 enemies
+    # Level 3 = 25 enemies
+    # Level 4 = 30 enemies
+    # Level 5 = 35 enemies
+    return BASE_ENEMIES + (level_index * 5)
+
 spawned_count = 0
+kill_count = 0
+portal_sound_played = False
+global game_over_sound_played
+game_over_sound_played = False
+
 
 enemy_spd = 2
 enemy_damage = 0.2
@@ -121,12 +173,18 @@ def spawn_enemy():
 
         if not any(new_enemy.colliderect(obs) for obs in Obstacles):
             enemies.append(new_enemy)
-            enemy_hp.append(3)
+
+            # Base HP = 3
+            # Increase by 0.5 every level
+            scaled_hp = 3 + (current_level_index * 1.5)
+            enemy_hp.append(scaled_hp)
+
             spawned_count += 1
             return
 
 # spawn initial wave
-for _ in range(ENEMIES_PER_LEVEL):
+enemy_count = get_enemy_count(current_level_index)
+for _ in range(enemy_count):
     spawn_enemy()
 
 # ---------------- ATTACK ----------------
@@ -155,12 +213,17 @@ while run:
                     menu_selected = (menu_selected + 1) % len(menu_items)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if menu_items[menu_selected] == "Play":
+                        sound_click.play()
                         menu_state = "play"
                         player.topleft = (640, 360)
                         scroll_x, scroll_y = 0, 0
+                        pygame.mixer.music.load("assets/bg.wav")
+                        pygame.mixer.music.play(-1, 0.0)
                     else:
                         run = False
                 if event.key == pygame.K_ESCAPE:
+                    sound_quit.play()
+                    pygame.time.delay(200)
                     run = False
             if event.type == pygame.MOUSEMOTION:
                 mx, my = event.pos
@@ -174,47 +237,81 @@ while run:
                     button_rect = pygame.Rect(520, 320 + index * 70, 240, 54)
                     if button_rect.collidepoint(mx, my):
                         if label == "Play":
+                            sound_click.play()
                             menu_state = "play"
                             player.topleft = (640, 360)
                             scroll_x, scroll_y = 0, 0
+                            pygame.mixer.music.load("assets/bg.wav")
+                            pygame.mixer.music.play(-1, 0.0)
                         else:
+                            sound_quit.play()
+                            pygame.time.delay(200)
                             run = False
 
         elif menu_state == "game_over":
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_UP, pygame.K_w):
                     game_over_selected = (game_over_selected - 1) % len(game_over_items)
+
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     game_over_selected = (game_over_selected + 1) % len(game_over_items)
+
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if game_over_items[game_over_selected] == "Restart":
+                        sound_click.play()
                         menu_state = "play"
                         start_level(0, reset_hp=True)
+
+                        pygame.mixer.music.load("assets/bg.wav")
+                        pygame.mixer.music.set_volume(0.5)
+                        pygame.mixer.music.play(-1, 0.0)
+
                     else:
+                        sound_quit.play()
+                        pygame.time.delay(200)
                         run = False
+
                 if event.key == pygame.K_ESCAPE:
+                    sound_quit.play()
+                    pygame.time.delay(200)
                     run = False
+
             if event.type == pygame.MOUSEMOTION:
                 mx, my = event.pos
                 for index, label in enumerate(game_over_items):
                     button_rect = pygame.Rect(520, 320 + index * 70, 240, 54)
                     if button_rect.collidepoint(mx, my):
                         game_over_selected = index
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
                 for index, label in enumerate(game_over_items):
                     button_rect = pygame.Rect(520, 320 + index * 70, 240, 54)
+
                     if button_rect.collidepoint(mx, my):
                         if label == "Restart":
+                            sound_click.play()
                             menu_state = "play"
                             start_level(0, reset_hp=True)
+
+                            pygame.mixer.music.load("assets/bg.wav")
+                            pygame.mixer.music.set_volume(0.5)
+                            pygame.mixer.music.play(-1, 0.0)
+
                         else:
+                            sound_quit.play()
+                            pygame.time.delay(200)
                             run = False
 
         else:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    sound_click.play()
+                    player_hp = 100
+                    start_level(0, reset_hp=True)
                     menu_state = "menu"
+                    pygame.mixer.music.load("assets/hell_menu.wav")
+                    pygame.mixer.music.play(-1, 0.0)
                 if event.key in (pygame.K_n, pygame.K_b):
                     if event.key == pygame.K_n:
                         next_index = (current_level_index + 1) % TOTAL_LEVELS
@@ -224,7 +321,12 @@ while run:
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if EXIT_BUTTON_RECT.collidepoint(event.pos):
+                    sound_click.play()
+                    player_hp = 100
+                    start_level(0, reset_hp=True)
                     menu_state = "menu"
+                    pygame.mixer.music.load("assets/hell_menu.wav")
+                    pygame.mixer.music.play(-1, 0.0)
                 else:
                     now = pygame.time.get_ticks()
                     if now - last_attack > attack_cooldown:
@@ -248,6 +350,9 @@ while run:
 
     if menu_state == "menu":
         screen.fill(MENU_BG)
+        bridge_img = pygame.image.load("assets\BGD.png").convert_alpha()
+
+        screen.blit(bridge_img, (0, 0))
 
         # Retro background scanlines
         for y in range(0, screen.get_height(), 8):
@@ -282,7 +387,7 @@ while run:
 
         # Retro background scanlines
         for y in range(0, screen.get_height(), 8):
-            pygame.draw.line(screen, (40, 10, 10), (0, y), (screen.get_width(), y), 1)
+            pygame.draw.line(screen, (40, 5, 5), (0, y), (screen.get_width(), y), 1)
 
         # Title with glow shadow
         title_surf = menu_title_font.render("GAME OVER", True, (255, 100, 100))
@@ -324,8 +429,7 @@ while run:
 
         flip_dan = cx < screen.get_width() / 2
         dan_display = pygame.transform.flip(dan, flip_dan, False)
-        screen.blit(dan_display, (player_scroll.x - 22, player_scroll.y - 5))
-
+        screen.blit(dan_display, (player_scroll.x - 22, player_scroll.y - 5))  
         # Draw TMX map
         if tmx_data:
             for layer in tmx_data.visible_layers:
@@ -333,7 +437,18 @@ while run:
                     for x, y, gid in layer:
                         tile = tmx_data.get_tile_image_by_gid(gid)
                         if tile:
-                            screen.blit(tile, (x * tmx_data.tilewidth - scroll_x, y * tmx_data.tileheight - scroll_y))
+                            screen.blit(
+                                tile,
+                                (
+                                    x * tmx_data.tilewidth - scroll_x,
+                                    y * tmx_data.tileheight - scroll_y
+                                )
+                            )
+
+        # ---------------- HP BAR (DRAW LAST) ----------------
+        pygame.draw.rect(screen, RED, (10, 10, 200, 20))
+        pygame.draw.rect(screen, GREEN, (10, 10, int(2 * player_hp), 20))
+        pygame.draw.rect(screen, WHITE, (10, 10, 200, 20), 2)
 
         # Handle dash mechanic
         current_time = pygame.time.get_ticks()
@@ -388,10 +503,17 @@ while run:
                     player.top = obs.bottom
 
         for obs in Obstacles:
-            pygame.draw.rect(screen, (0, 255, 255), (obs.x - scroll_x, obs.y - scroll_y, obs.width, obs.height))
+            pygame.draw.rect(screen, (0, 0, 0), (obs.x - scroll_x, obs.y - scroll_y, obs.width, obs.height))
 
         # Check if portal is unlocked (all enemies defeated)
-        portal_unlocked = (spawned_count == ENEMIES_PER_LEVEL and len(enemies) == 0)
+        portal_unlocked = (
+            spawned_count == get_enemy_count(current_level_index)
+            and len(enemies) == 0
+        )
+        # Play unlock sound once
+        if portal_unlocked and not portal_sound_played:
+         sound_portal_unlock.play()
+         portal_sound_played = True
         
         # Draw portal in green when unlocked, red when locked
         portal_color = GREEN if portal_unlocked else RED
@@ -453,6 +575,7 @@ while run:
                         if enemy_hp[i] <= 0:
                             enemies.pop(i)
                             enemy_hp.pop(i)
+                            kill_count += 1
 
         # Draw dash indicator when active
         if dashing:
@@ -488,12 +611,21 @@ while run:
         level_text = hud_font.render(f"Level: {level_name}", True, WHITE)
         screen.blit(level_text, (10, 40))
 
-        if player_hp <= 0:
+        # ---------------- SCOREBOARD ----------------
+        score_text = hud_font.render(f"KILLS: {kill_count}", True, YELLOW)
+        score_rect = score_text.get_rect(center=(screen.get_width() // 2, 30))
+        screen.blit(score_text, score_rect)
+
+        if player_hp <= 0 and not game_over_sound_played:
+            sound_game_over.play()
+
+            # Stop current music
+            pygame.mixer.music.stop()
+
+            game_over_sound_played = True
             menu_state = "game_over"
 
-    # ---------------- HP ----------------
-    pygame.draw.rect(screen, RED, (10, 10, 200, 20))
-    pygame.draw.rect(screen, GREEN, (10, 10, int(2 * player_hp), 20))
+
 
     pygame.display.flip()
     clock.tick(60)
