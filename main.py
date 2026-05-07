@@ -402,9 +402,6 @@ while run:
 
         screen.blit(bridge_img, (0, 0))
 
-        # Retro background scanlines
-        for y in range(0, screen.get_height(), 8):
-            pygame.draw.line(screen, (30, 10, 10), (0, y), (screen.get_width(), y), 1)
 
         # Title with glow shadow
         title_surf = menu_title_font.render("DANTE'S INFERNO", True, MENU_TEXT)
@@ -532,9 +529,6 @@ while run:
                 elif dy < 0:
                     player.top = obs.bottom
 
-        # Debug obstacle drawing
-        # for obs in Obstacles:
-        #     pygame.draw.rect(screen, (0, 0, 0), ...)
 
         # Check if portal is unlocked (all enemies defeated)
         portal_unlocked = len(enemies) == 0
