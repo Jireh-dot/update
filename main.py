@@ -44,30 +44,77 @@ current_level_index = 0
 tmx_data = None
 
 
+# ---------------- LEVEL CACHE ----------------
+tmx_cache = {}
+map_surface_cache = {}
+current_map_surface = None
+
 def load_level(index):
     lvl = level_data["levels"][index]
+
     world_w = lvl["world_width"]
     world_h = lvl["world_height"]
+
     obstacles = [
         pygame.Rect(-20, 0, 20, world_h),
         pygame.Rect(world_w, 0, 20, world_h),
         pygame.Rect(0, -20, world_w, 20),
         pygame.Rect(0, world_h, world_w, 20),
     ]
+
     for obs in lvl["obstacles"]:
-        obstacles.append(pygame.Rect(obs["x"], obs["y"], obs["w"], obs["h"]))
+        obstacles.append(
+            pygame.Rect(obs["x"], obs["y"], obs["w"], obs["h"])
+        )
 
     tmx_path = lvl.get("tmx_file", "assets/level1.tmx")
-    tmx_data = load_pygame(tmx_path)
+
+    # LOAD ONLY ONCE
+    if tmx_path not in tmx_cache:
+        tmx_cache[tmx_path] = load_pygame(tmx_path)
+
+    tmx_data = tmx_cache[tmx_path]
 
     return world_w, world_h, obstacles, lvl["name"], tmx_data
 
 
 def start_level(index, reset_hp=False):
-    global current_level_index, WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data, scroll_x, scroll_y, player_hp, enemies, enemy_hp, spawned_count, dashing, last_dash, kill_count, portal_sound_played, game_over_sound_played
-    
+    global current_level_index, WORLD_WIDTH, WORLD_HEIGHT
+    global Obstacles, level_name, tmx_data
+    global scroll_x, scroll_y
+    global player_hp, enemies, enemy_hp
+    global spawned_count, dashing, last_dash
+    global kill_count, portal_sound_played
+    global game_over_sound_played
+    global current_map_surface, map_surface_cache
+    global dash_start_time, dash_velocity_x, dash_velocity_y
+
     current_level_index = index
+
+    player.topleft = (640, 360)
+    enemies.clear()
+    enemy_hp.clear()
+
     WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data = load_level(index)
+
+    # PRE-RENDER MAP
+    if index not in map_surface_cache:
+        map_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT)).convert()
+
+        for layer in tmx_data.visible_layers:
+            if isinstance(layer, pytmx.TiledTileLayer):
+                for x, y, gid in layer:
+                    tile = tmx_data.get_tile_image_by_gid(gid)
+                    if tile:
+                        map_surface.blit(
+                            tile,
+                            (x * tmx_data.tilewidth,
+                             y * tmx_data.tileheight)
+                        )
+
+        map_surface_cache[index] = map_surface
+
+    current_map_surface = map_surface_cache[index]
 
     player.topleft = (640, 360)
     scroll_x, scroll_y = 0, 0
@@ -77,13 +124,14 @@ def start_level(index, reset_hp=False):
 
     if reset_hp:
         player_hp = 100
+
     enemies.clear()
     enemy_hp.clear()
+
     spawned_count = 0
     kill_count = 0
 
     portal_sound_played = False
-    global game_over_sound_played
     game_over_sound_played = False
 
     enemy_count = get_enemy_count(current_level_index)
@@ -91,10 +139,7 @@ def start_level(index, reset_hp=False):
     for _ in range(enemy_count):
         spawn_enemy()
 
-WORLD_WIDTH, WORLD_HEIGHT, Obstacles, level_name, tmx_data = load_level(current_level_index)
 
-scroll_x = 0
-scroll_y = 0
 
 WHITE = (240, 240, 240)
 RED = (200, 70, 70)
@@ -123,8 +168,10 @@ menu_item_font = pygame.font.SysFont("couriernew", 30, bold=True)
 menu_small_font = pygame.font.SysFont("couriernew", 18)
 hud_font = pygame.font.SysFont("couriernew", 24)
 
+bridge_img = pygame.image.load("assets/BGD.png").convert_alpha()
+
 player = pygame.Rect(450, 300, 40, 66)
-dan = pygame.image.load("assets/player_sprites.png")
+dan = pygame.image.load("assets/player_sprites.png").convert_alpha()
 dan.set_colorkey((62, 136, 183))
 dan = pygame.transform.scale(dan, (int(dan.get_width()/6), int(dan.get_height()/6)))
 player_spd = 5
@@ -157,12 +204,13 @@ def get_enemy_count(level_index):
 spawned_count = 0
 kill_count = 0
 portal_sound_played = False
-global game_over_sound_played
 game_over_sound_played = False
 
 
 enemy_spd = 2
 enemy_damage = 0.2
+
+
 
 def spawn_enemy():
     global spawned_count
@@ -176,16 +224,16 @@ def spawn_enemy():
 
             # Base HP = 3
             # Increase by 0.5 every level
-            scaled_hp = 3 + (current_level_index * 1.5)
+            scaled_hp = 3 + (current_level_index * 1.0)
             enemy_hp.append(scaled_hp)
 
             spawned_count += 1
             return
 
-# spawn initial wave
-enemy_count = get_enemy_count(current_level_index)
-for _ in range(enemy_count):
-    spawn_enemy()
+# START FIRST LEVEL AFTER EVERYTHING EXISTS
+scroll_x = 0
+scroll_y = 0
+start_level(current_level_index)
 
 # ---------------- ATTACK ----------------
 attack_cooldown = 400
@@ -195,7 +243,7 @@ attacking = False
 attack_time = 0
 attack_rect = pygame.Rect(0, 0, 0, 0)
 
-screen = pygame.display.set_mode((1280, 720))
+
 TOTAL_LEVELS = len(level_data["levels"])
 
 run = True
@@ -350,7 +398,7 @@ while run:
 
     if menu_state == "menu":
         screen.fill(MENU_BG)
-        bridge_img = pygame.image.load("assets\BGD.png").convert_alpha()
+
 
         screen.blit(bridge_img, (0, 0))
 
@@ -427,23 +475,8 @@ while run:
         scroll_x = max(0, min(scroll_x, WORLD_WIDTH - screen.get_width()))
         scroll_y = max(0, min(scroll_y, WORLD_HEIGHT - screen.get_height()))
 
-        flip_dan = cx < screen.get_width() / 2
-        dan_display = pygame.transform.flip(dan, flip_dan, False)
-        screen.blit(dan_display, (player_scroll.x - 22, player_scroll.y - 5))  
-        # Draw TMX map
-        if tmx_data:
-            for layer in tmx_data.visible_layers:
-                if isinstance(layer, pytmx.TiledTileLayer):
-                    for x, y, gid in layer:
-                        tile = tmx_data.get_tile_image_by_gid(gid)
-                        if tile:
-                            screen.blit(
-                                tile,
-                                (
-                                    x * tmx_data.tilewidth - scroll_x,
-                                    y * tmx_data.tileheight - scroll_y
-                                )
-                            )
+        # Draw map first
+        screen.blit(current_map_surface, (-scroll_x, -scroll_y))
 
         # ---------------- HP BAR (DRAW LAST) ----------------
         pygame.draw.rect(screen, RED, (10, 10, 200, 20))
@@ -465,9 +498,6 @@ while run:
                         move_x /= length
                         move_y /= length
                     dashing = True
-                    dash_start_time = current_time
-                    dash_velocity_x = move_x * dash_speed
-                    dash_velocity_y = move_y * dash_speed
                     last_dash = current_time
         
         # Update dash state
@@ -502,14 +532,13 @@ while run:
                 elif dy < 0:
                     player.top = obs.bottom
 
-        for obs in Obstacles:
-            pygame.draw.rect(screen, (0, 0, 0), (obs.x - scroll_x, obs.y - scroll_y, obs.width, obs.height))
+        # Debug obstacle drawing
+        # for obs in Obstacles:
+        #     pygame.draw.rect(screen, (0, 0, 0), ...)
 
         # Check if portal is unlocked (all enemies defeated)
-        portal_unlocked = (
-            spawned_count == get_enemy_count(current_level_index)
-            and len(enemies) == 0
-        )
+        portal_unlocked = len(enemies) == 0
+        
         # Play unlock sound once
         if portal_unlocked and not portal_sound_played:
          sound_portal_unlock.play()
