@@ -60,6 +60,7 @@
       "name": "Level 5",
       "world_width": 3000,
       "world_height": 1500,
+      "tmx_file": "assets/level5.tmx",
       "obstacles": [
         {
           "x": 200,
