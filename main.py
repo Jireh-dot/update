@@ -7,14 +7,24 @@ from pytmx.util_pygame import load_pygame
 
 pygame.init()
 
-pygame.mixer.init()
 
 # ---------------- SOUND EFFECTS ----------------
+pygame.mixer.init()
+
+pygame.mixer.set_num_channels(32)
+
+# Reserve channels for combat sounds
+attack_channel = pygame.mixer.Channel(1)
+
+portal_channel = pygame.mixer.Channel(3)
+
 sound_opener = pygame.mixer.Sound('assets/start_sound.wav')
 sound_click = pygame.mixer.Sound('assets/click.wav')   # Play/Main Menu
 sound_quit = pygame.mixer.Sound('assets/quit.wav')     # Quit button
 sound_portal_unlock = pygame.mixer.Sound('assets/portal_unlock.wav')
 sound_game_over = pygame.mixer.Sound('assets/game_over.wav')
+sound_attack_hit = pygame.mixer.Sound('assets/attack_hit.wav')
+
 
 sound_opener.play()
 
@@ -22,6 +32,8 @@ sound_click.set_volume(0.7)
 sound_quit.set_volume(0.7)
 sound_portal_unlock.set_volume(0.8)
 sound_game_over.set_volume(0.8)
+sound_attack_hit.set_volume(0.6)
+
 
 # ---------------- MUSIC ----------------
 pygame.mixer.music.load("assets/hell_menu.wav")
@@ -398,10 +410,7 @@ while run:
 
     if menu_state == "menu":
         screen.fill(MENU_BG)
-
-
         screen.blit(bridge_img, (0, 0))
-
 
         # Title with glow shadow
         title_surf = menu_title_font.render("DANTE'S INFERNO", True, MENU_TEXT)
@@ -535,8 +544,14 @@ while run:
         
         # Play unlock sound once
         if portal_unlocked and not portal_sound_played:
-         sound_portal_unlock.play()
-         portal_sound_played = True
+
+            # Stop anything already on portal channel
+            portal_channel.stop()
+
+            # Play portal unlock sound
+            portal_channel.play(sound_portal_unlock)
+
+            portal_sound_played = True
         
         # Draw portal in green when unlocked, red when locked
         portal_color = GREEN if portal_unlocked else RED
@@ -593,9 +608,18 @@ while run:
                 attacking = False
             else:
                 for i in range(len(enemies)-1, -1, -1):
+
                     if attack_rect.colliderect(enemies[i]):
+
+                        # DAMAGE ENEMY
                         enemy_hp[i] -= 1
-                        if enemy_hp[i] <= 0:
+
+                        # PLAY HIT SOUND
+                        hit_channel = pygame.mixer.find_channel()
+                        if hit_channel:
+                            hit_channel.play(sound_attack_hit)
+
+
                             enemies.pop(i)
                             enemy_hp.pop(i)
                             kill_count += 1
