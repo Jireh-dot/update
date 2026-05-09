@@ -521,11 +521,11 @@ while run:
         screen.blit(hint, hint.get_rect(center=(screen.get_width() / 2, 520)))
 
 
-        # ================= SCOREBOARD (FIXED POSITION) =================
+        # ================= SCOREBOARD =================
 
-        base_y = 240  # moved slightly higher so buttons don't overlap
+        base_y = 240  
 
-        # Total kills (centered)
+        # Total kills
         total_text = menu_item_font.render(
             f"TOTAL KILLS: {total_kills}",
             True,
